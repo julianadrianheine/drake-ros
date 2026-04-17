@@ -47,7 +47,7 @@ def _ros_xacro_impl(ctx):
     args.add("-o", output)
     args.add_all(ctx.attr.xacro_args)
     ctx.actions.run(
-        inputs = [ctx.file.src],
+        inputs = [ctx.file.src] + ctx.files.deps,
         outputs = [output],
         executable = ctx.executable.xacro_tool,
         arguments = [args],
@@ -60,6 +60,11 @@ _ros_xacro_rule = rule(
             allow_single_file = [".xacro"],
             mandatory = True,
             doc = "The main .urdf.xacro file to process.",
+        ),
+        "deps": attr.label_list(
+            allow_files = [".xacro"],
+            default = [],
+            doc = "Additional .xacro files included via relative paths.",
         ),
         "xacro_args": attr.string_list(
             default = [],
@@ -75,7 +80,7 @@ _ros_xacro_rule = rule(
     implementation = _ros_xacro_impl,
 )
 
-def ros_xacro(name, src, ros_packages = {}, xacro_args = [], visibility = None, **kwargs):
+def ros_xacro(name, src, deps = [], ros_packages = {}, xacro_args = [], visibility = None, **kwargs):
     """Transforms a .urdf.xacro file into a .urdf file.
 
     User-defined packages are declared inline via the ros_packages dict.  Each
@@ -91,7 +96,8 @@ def ros_xacro(name, src, ros_packages = {}, xacro_args = [], visibility = None, 
     Example:
         ros_xacro(
             name = "example",
-            src = "example.urdf.xacro",
+            src = "robot.urdf.xacro",
+            deps = ["base.xacro", "arm.xacro"],
             ros_packages = {
                 "my_robot": glob(["urdf/**"]),
             },
@@ -101,6 +107,10 @@ def ros_xacro(name, src, ros_packages = {}, xacro_args = [], visibility = None, 
     Args:
         name:         target name; the output file is named <name>.urdf
         src:          the .urdf.xacro source file
+        deps:         additional .xacro files included via relative paths
+                      (i.e. plain <xacro:include filename="other.xacro"/>);
+                      must be listed here so Bazel sandboxes them and tracks
+                      them as dependencies for incremental rebuilds
         ros_packages: dict mapping ROS package name to list of share files;
                       files are stripped of the calling package's path prefix
                       automatically before being placed under share/<pkg>/
@@ -144,6 +154,7 @@ def ros_xacro(name, src, ros_packages = {}, xacro_args = [], visibility = None, 
     _ros_xacro_rule(
         name = name,
         src = src,
+        deps = deps,
         xacro_args = xacro_args,
         xacro_tool = ":" + runner_name,
         visibility = visibility,
